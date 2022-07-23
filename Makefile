@@ -65,7 +65,7 @@ bench: check-server-id rotate build deploy-conf restart
 	# Stats
 	$(MAKE) top &
 	$(MAKE) dstat &
-	$(MAKE) pprof-record &
+	#$(MAKE) pprof-record &
 	
 	# App log
 	@$(MAKE) app-log
