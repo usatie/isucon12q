@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "net/http/pprof"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/gofrs/flock"
@@ -66,6 +67,9 @@ func connectAdminDB() (*sqlx.DB, error) {
 	config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
 	config.DBName = getEnv("ISUCON_DB_NAME", "isuports")
 	config.ParseTime = true
+	config.Params = map[string]string {
+		"interpolateParams": "true"
+	}
 	dsn := config.FormatDSN()
 	return sqlx.Open("mysql", dsn)
 }
@@ -134,8 +138,8 @@ func SetCacheControlPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 // Run は cmd/isuports/main.go から呼ばれるエントリーポイントです
 func Run() {
 	e := echo.New()
-	e.Debug = true
-	e.Logger.SetLevel(log.DEBUG)
+	e.Debug = true // 最後にコメントアウトする
+	e.Logger.SetLevel(log.DEBUG) //最後にFATALに変える
 
 	var (
 		sqlLogger io.Closer
@@ -151,9 +155,15 @@ func Run() {
 	}
 	defer sqlLogger.Close()
 
-	e.Use(middleware.Logger())
+	e.Use(middleware.Logger()) // 最後にコメントアウトする
 	e.Use(middleware.Recover())
 	e.Use(SetCacheControlPrivate)
+
+	// pprof
+	runtime.SetBlockProfileRate(1) // 最後にコメントアウトする
+	go func() {
+		log.Fatal(http.ListenAndServe(":6060", nil))
+	}()
 
 	// SaaS管理者向けAPI
 	e.POST("/api/admin/tenants/add", tenantsAddHandler)
@@ -189,7 +199,8 @@ func Run() {
 		e.Logger.Fatalf("failed to connect db: %v", err)
 		return
 	}
-	adminDB.SetMaxOpenConns(10)
+	adminDB.SetMaxOpenConns(1000)
+	adminDB.SetMaxIdleConns(1000)
 	defer adminDB.Close()
 
 	port := getEnv("SERVER_APP_PORT", "3000")
