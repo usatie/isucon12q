@@ -20,3 +20,8 @@ cat init.sql| \
 # SQLiteのデータベースを初期化
 rm -f ../tenant_db/*.db
 cp -r ../../initial_data/*.db ../tenant_db/
+
+for i in `seq 1 100`
+do
+	echo "CREATE INDEX player_score_idx ON player_score(tenant_id, competition_id, player_id);" | sqlite3 ../tenant_db/$i.db
+done
