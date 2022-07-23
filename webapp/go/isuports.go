@@ -1393,7 +1393,14 @@ func competitionRankingHandler(c echo.Context) error {
 	if err := tenantDB.SelectContext(
 		ctx,
 		&pss,
-		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
+		//"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
+		"SELECT tenant_id, player_id, competition_id, "+
+			"LAST_VALUE(score) OVER (ORDER BY row_num DESC) AS score, "+
+			"LAST_VALUE(id) OVER (ORDER BY row_num DESC) AS id, "+
+			"LAST_VALUE(row_num) OVER (ORDER BY row_num DESC) AS row_num, "+
+			"LAST_VALUE(created_at) OVER (ORDER BY row_num DESC) AS created_at, "+
+			"LAST_VALUE(updated_at) OVER (ORDER BY row_num DESC) AS updated_at "+
+			"FROM player_score WHERE tenant_id = ? AND competition_id = ? group by 1,2,3;",
 		tenant.ID,
 		competitionID,
 	); err != nil {
@@ -1416,18 +1423,6 @@ func competitionRankingHandler(c echo.Context) error {
 			PlayerDisplayName: "",
 			RowNum:            ps.RowNum,
 		})
-		/*
-			p, err := retrievePlayer(ctx, tenantDB, ps.PlayerID)
-			if err != nil {
-				return fmt.Errorf("error retrievePlayer: %w", err)
-			}
-			ranks = append(ranks, CompetitionRank{
-				Score:             ps.Score,
-				PlayerID:          p.ID,
-				PlayerDisplayName: p.DisplayName,
-				RowNum:            ps.RowNum,
-			})
-		*/
 	}
 	players, err := retrievePlayers(ctx, tenantDB, ids)
 	for i, r := range ranks {
