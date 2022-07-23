@@ -74,6 +74,7 @@ func connectAdminDB() (*sqlx.DB, error) {
 		"interpolateParams": "true",
 	}
 	dsn := config.FormatDSN()
+	fmt.Println(dsn)
 	return sqlx.Open("mysql", dsn)
 }
 
@@ -1697,12 +1698,23 @@ type InitializeHandlerResult struct {
 // ベンチマーカーが起動したときに最初に呼ぶ
 // データベースの初期化などが実行されるため、スキーマを変更した場合などは適宜改変すること
 func initializeHandler(c echo.Context) error {
-	out, err := exec.Command(initializeScript).CombinedOutput()
+	out, err := exec.Command("pwd").CombinedOutput()
+	fmt.Println(string(out), err)
+	out, err = exec.Command(initializeScript).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error exec.Command: %s %e", string(out), err)
 	}
+
+	initCache()
 	res := InitializeHandlerResult{
 		Lang: "go",
 	}
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
+}
+
+func initCache() {
+	closeAllTenantDB()
+	dbs = sync.Map{}
+	playersCacheUpdatedAt = sync.Map{}
+	playersCache = sync.Map{}
 }

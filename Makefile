@@ -311,8 +311,7 @@ deploy-envsh:
 
 .PHONY: build
 build:
-	cd $(BUILD_DIR) && \
-		go build -o $(BIN_NAME)
+	make -C $(BUILD_DIR)
 
 .PHONY: restart
 restart:
