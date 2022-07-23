@@ -8,16 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	_ "net/http/pprof"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/gofrs/flock"
@@ -67,8 +68,8 @@ func connectAdminDB() (*sqlx.DB, error) {
 	config.Passwd = getEnv("ISUCON_DB_PASSWORD", "isucon")
 	config.DBName = getEnv("ISUCON_DB_NAME", "isuports")
 	config.ParseTime = true
-	config.Params = map[string]string {
-		"interpolateParams": "true"
+	config.Params = map[string]string{
+		"interpolateParams": "true",
 	}
 	dsn := config.FormatDSN()
 	return sqlx.Open("mysql", dsn)
@@ -138,7 +139,7 @@ func SetCacheControlPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 // Run は cmd/isuports/main.go から呼ばれるエントリーポイントです
 func Run() {
 	e := echo.New()
-	e.Debug = true // 最後にコメントアウトする
+	e.Debug = true               // 最後にコメントアウトする
 	e.Logger.SetLevel(log.DEBUG) //最後にFATALに変える
 
 	var (
