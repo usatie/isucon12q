@@ -42,7 +42,7 @@ ALP_CONFIG:=$(ALP_CONFIG_DIR)/config.yml
 TRDSQL_DIR:=$(HOME)/tool-config/trdsql
 TRDSQL_SQL:=$(TRDSQL_DIR)/access.sql
 
-DURATION=75
+DURATION=80
 RESULT_DIR:=$(HOME)/results
 RESULT_TOP_DIR:=$(RESULT_DIR)/top
 RESULT_DSTAT_DIR:=$(RESULT_DIR)/dstat
@@ -65,7 +65,7 @@ bench: check-server-id rotate build deploy-conf restart
 	# Stats
 	$(MAKE) top &
 	$(MAKE) dstat &
-	$(MAKE) pprof-record &
+	sleep 5 && $(MAKE) pprof-record &
 	
 	# App log
 	@$(MAKE) app-log
@@ -75,6 +75,7 @@ bench-app: check-server-id rotate build deploy-conf restart
 	# Stats
 	$(MAKE) top &
 	$(MAKE) dstat &
+	sleep 5
 	$(MAKE) pprof-record &
 	
 	# App log

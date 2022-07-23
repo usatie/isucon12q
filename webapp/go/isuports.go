@@ -156,7 +156,7 @@ func Run() {
 	}
 	defer sqlLogger.Close()
 
-	e.Use(middleware.Logger()) // 最後にコメントアウトする
+	//e.Use(middleware.Logger()) // 最後にコメントアウトする
 	e.Use(middleware.Recover())
 	e.Use(SetCacheControlPrivate)
 
