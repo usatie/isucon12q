@@ -186,7 +186,7 @@ func Run() {
 
 	//e.Use(middleware.Logger()) // 最後にコメントアウトする
 	e.Use(middleware.Recover())
-	e.Use(SetCacheControlPrivate)
+	//e.Use(SetCacheControlPrivate)
 
 	// pprof
 	runtime.SetBlockProfileRate(1) // 最後にコメントアウトする
