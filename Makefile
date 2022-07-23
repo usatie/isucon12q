@@ -65,7 +65,7 @@ bench: check-server-id rotate build deploy-conf restart
 	# Stats
 	$(MAKE) top &
 	$(MAKE) dstat &
-	#$(MAKE) pprof-record &
+	$(MAKE) pprof-record &
 	
 	# App log
 	@$(MAKE) app-log
@@ -109,7 +109,7 @@ slow-query:
 	mkdir -p $(RESULT_SLOW_DIR)
 	$(eval n := $(shell (ls -l $(RESULT_SLOW_DIR) || echo 1) | wc | awk '{print $$1}'))
 	mkdir -p $(RESULT_SLOW_DIR)/$(n)
-	sudo pt-query-digest --explain h=$(MYSQL_HOST),u=$(MYSQL_USER),p=$(MYSQL_PASS) $(DB_SLOW_LOG) \
+	sudo pt-query-digest --explain h=$(ISUCON_DB_HOST),u=$(ISUCON_DB_USER),p=$(ISUCON_DB_PASSWORD) $(ISUCON_DB_NAME) $(DB_SLOW_LOG) \
 		| tee $(RESULT_SLOW_DIR)/$(n)/$(SERVER_ID).digest
 
 .PHONY: alp
@@ -131,7 +131,7 @@ pprof-check:
 
 .PHONY: access-db
 access-db:
-	mysql -h $(MYSQL_HOST) -P $(MYSQL_PORT) -u $(MYSQL_USER) -p$(MYSQL_PASS) $(MYSQL_DBNAME)
+	mysql -h $(ISUCON_DB_HOST) -P $(ISUCON_DB_PORT) -u $(ISUCON_DB_USER) -p$(ISUCON_DB_PASSWORD) $(ISUCON_DB_NAME)
 
 # Components
 .PHONY: makedir
