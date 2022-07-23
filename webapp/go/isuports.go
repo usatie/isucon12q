@@ -166,8 +166,8 @@ func SetCacheControlPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 // Run は cmd/isuports/main.go から呼ばれるエントリーポイントです
 func Run() {
 	e := echo.New()
-	e.Debug = true               // 最後にコメントアウトする
-	e.Logger.SetLevel(log.DEBUG) //最後にFATALに変える
+	//e.Debug = true               // 最後にコメントアウトする
+	//e.Logger.SetLevel(log.ERROR) //最後にFATALに変える
 
 	var (
 		sqlLogger io.Closer
@@ -408,11 +408,44 @@ type PlayerRow struct {
 }
 
 // 参加者を取得する
-func retrievePlayer(ctx context.Context, tenantDB dbOrTx, id string) (*PlayerRow, error) {
+var playersCacheUpdatedAt = sync.Map{} // map[string]time.Time
+var playersCache = sync.Map{}          //map[string]PlayerRow
+var playersGroup = singleflight.Group{}
+
+func retrievePlayerCached(ctx context.Context, tenantDB dbOrTx, id string, tenantID int64) (*PlayerRow, error) {
+	key := fmt.Sprintf("%d:%s", tenantID, id)
+	cachedAt, ok1 := playersCacheUpdatedAt.Load(key)
+	pif, ok2 := playersCache.Load(key)
+	now := time.Now()
+	if ok1 && ok2 && now.Sub(cachedAt.(time.Time)) < 2000*time.Millisecond {
+		p := pif.(PlayerRow)
+		return &p, nil
+	}
+	pif, err, _ := playersGroup.Do(key, func() (interface{}, error) {
+		var p PlayerRow
+		if err := tenantDB.GetContext(ctx, &p, "SELECT * FROM player WHERE id = ?", id); err != nil {
+			return nil, fmt.Errorf("error Select player: id=%s, %w", id, err)
+		}
+		playersCacheUpdatedAt.Store(key, now)
+		playersCache.Store(key, p)
+		return p, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	p := pif.(PlayerRow)
+	return &p, nil
+}
+
+func retrievePlayer(ctx context.Context, tenantDB dbOrTx, id string, tenantID int64) (*PlayerRow, error) {
+	key := fmt.Sprintf("%d:%s", tenantID, id)
+	now := time.Now()
 	var p PlayerRow
 	if err := tenantDB.GetContext(ctx, &p, "SELECT * FROM player WHERE id = ?", id); err != nil {
 		return nil, fmt.Errorf("error Select player: id=%s, %w", id, err)
 	}
+	playersCacheUpdatedAt.Store(key, now)
+	playersCache.Store(key, p)
 	return &p, nil
 }
 
@@ -430,8 +463,8 @@ func retrievePlayers(ctx context.Context, tenantDB dbOrTx, ids []string) ([]Play
 
 // 参加者を認可する
 // 参加者向けAPIで呼ばれる
-func authorizePlayer(ctx context.Context, tenantDB dbOrTx, id string) error {
-	player, err := retrievePlayer(ctx, tenantDB, id)
+func authorizePlayer(ctx context.Context, tenantDB dbOrTx, id string, tenantID int64) error {
+	player, err := retrievePlayerCached(ctx, tenantDB, id, tenantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "player not found")
@@ -858,7 +891,7 @@ func playersAddHandler(c echo.Context) error {
 				id, displayName, false, now, now, err,
 			)
 		}
-		p, err := retrievePlayer(ctx, tenantDB, id)
+		p, err := retrievePlayer(ctx, tenantDB, id, v.tenantID)
 		if err != nil {
 			return fmt.Errorf("error retrievePlayer: %w", err)
 		}
@@ -899,17 +932,18 @@ func playerDisqualifiedHandler(c echo.Context) error {
 	playerID := c.Param("player_id")
 
 	now := time.Now().Unix()
-	if _, err := tenantDB.ExecContext(
+	_, err = tenantDB.ExecContext(
 		ctx,
 		"UPDATE player SET is_disqualified = ?, updated_at = ? WHERE id = ?",
 		true, now, playerID,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf(
 			"error Update player: isDisqualified=%t, updatedAt=%d, id=%s, %w",
 			true, now, playerID, err,
 		)
 	}
-	p, err := retrievePlayer(ctx, tenantDB, playerID)
+	p, err := retrievePlayer(ctx, tenantDB, playerID, v.tenantID)
 	if err != nil {
 		// 存在しないプレイヤー
 		if errors.Is(err, sql.ErrNoRows) {
@@ -922,7 +956,7 @@ func playerDisqualifiedHandler(c echo.Context) error {
 		Player: PlayerDetail{
 			ID:             p.ID,
 			DisplayName:    p.DisplayName,
-			IsDisqualified: p.IsDisqualified,
+			IsDisqualified: true,
 		},
 	}
 	return c.JSON(http.StatusOK, SuccessResult{Status: true, Data: res})
@@ -1109,7 +1143,7 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("row must have two columns: %#v", row)
 		}
 		playerID, scoreStr := row[0], row[1]
-		if _, err := retrievePlayer(ctx, tenantDB, playerID); err != nil {
+		if _, err := retrievePlayer(ctx, tenantDB, playerID, v.tenantID); err != nil {
 			// 存在しない参加者が含まれている
 			if errors.Is(err, sql.ErrNoRows) {
 				return echo.NewHTTPError(
@@ -1249,7 +1283,7 @@ func playerHandler(c echo.Context) error {
 		return err
 	}
 
-	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
+	if err := authorizePlayer(ctx, tenantDB, v.playerID, v.tenantID); err != nil {
 		return err
 	}
 
@@ -1257,7 +1291,7 @@ func playerHandler(c echo.Context) error {
 	if playerID == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "player_id is required")
 	}
-	p, err := retrievePlayer(ctx, tenantDB, playerID)
+	p, err := retrievePlayer(ctx, tenantDB, playerID, v.tenantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusNotFound, "player not found")
@@ -1358,7 +1392,7 @@ func competitionRankingHandler(c echo.Context) error {
 		return err
 	}
 
-	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
+	if err := authorizePlayer(ctx, tenantDB, v.playerID, v.tenantID); err != nil {
 		return err
 	}
 
@@ -1510,7 +1544,7 @@ func playerCompetitionsHandler(c echo.Context) error {
 		return err
 	}
 
-	if err := authorizePlayer(ctx, tenantDB, v.playerID); err != nil {
+	if err := authorizePlayer(ctx, tenantDB, v.playerID, v.tenantID); err != nil {
 		return err
 	}
 	return competitionsHandler(c, v, tenantDB)
@@ -1623,7 +1657,7 @@ func meHandler(c echo.Context) error {
 		return fmt.Errorf("error connectToTenantDB: %w", err)
 	}
 	ctx := context.Background()
-	p, err := retrievePlayer(ctx, tenantDB, v.playerID)
+	p, err := retrievePlayer(ctx, tenantDB, v.playerID, v.tenantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.JSON(http.StatusOK, SuccessResult{
