@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,7 +74,6 @@ func connectAdminDB() (*sqlx.DB, error) {
 		"interpolateParams": "true",
 	}
 	dsn := config.FormatDSN()
-	fmt.Println(dsn)
 	return sqlx.Open("mysql", dsn)
 }
 
@@ -169,6 +168,7 @@ func Run() {
 	e := echo.New()
 	//e.Debug = true               // 最後にコメントアウトする
 	//e.Logger.SetLevel(log.ERROR) //最後にFATALに変える
+	log.SetOutput(ioutil.Discard)
 
 	var (
 		sqlLogger io.Closer
@@ -187,12 +187,6 @@ func Run() {
 	//e.Use(middleware.Logger()) // 最後にコメントアウトする
 	e.Use(middleware.Recover())
 	//e.Use(SetCacheControlPrivate)
-
-	// pprof
-	runtime.SetBlockProfileRate(1) // 最後にコメントアウトする
-	go func() {
-		log.Fatal(http.ListenAndServe(":6060", nil))
-	}()
 
 	// SaaS管理者向けAPI
 	e.POST("/api/admin/tenants/add", tenantsAddHandler)
@@ -1116,8 +1110,6 @@ func competitionScoreHandler(c echo.Context) error {
 	}
 	defer f.Close()
 
-	fmt.Printf("The file is %d bytes long", fh.Size)
-
 	r := csv.NewReader(f)
 	headers, err := r.Read()
 	if err != nil {
@@ -1709,7 +1701,6 @@ type InitializeHandlerResult struct {
 // データベースの初期化などが実行されるため、スキーマを変更した場合などは適宜改変すること
 func initializeHandler(c echo.Context) error {
 	out, err := exec.Command("pwd").CombinedOutput()
-	fmt.Println(string(out), err)
 	out, err = exec.Command(initializeScript).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error exec.Command: %s %e", string(out), err)
